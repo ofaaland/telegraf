@@ -452,44 +452,32 @@ func (l *Lustre2) Description() string {
 func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 	l.allFields = make(map[string]map[string]interface{})
 
+	var ost_files []string
+	var mdt_files []string
+
 	if len(l.Ost_procfiles) == 0 {
 		// read/write bytes are in obdfilter/<ost_name>/stats
-		err := l.GetLustreProcStats("/proc/fs/lustre/obdfilter/*/stats",
-			wanted_ost_fields)
-		if err != nil {
-			return err
-		}
 		// cache counters are in osd-ldiskfs/<ost_name>/stats
-		err = l.GetLustreProcStats("/proc/fs/lustre/osd-ldiskfs/*/stats",
-			wanted_ost_fields)
-		if err != nil {
-			return err
-		}
 		// per job statistics are in obdfilter/<ost_name>/job_stats
-		err = l.GetLustreProcStats("/proc/fs/lustre/obdfilter/*/job_stats",
-			wanted_ost_jobstats_fields)
-		if err != nil {
-			return err
-		}
+
+		ost_files = append(ost_files, "/proc/fs/lustre/obdfilter/*/stats")
+		ost_files = append(ost_files, "/proc/fs/lustre/osd-ldiskfs/*/stats")
+		ost_files = append(ost_files, "/proc/fs/lustre/obdfilter/*/job_stats")
+	} else {
+		ost_files = l.Ost_procfiles;
 	}
 
 	if len(l.Mds_procfiles) == 0 {
 		// Metadata server stats
-		err := l.GetLustreProcStats("/proc/fs/lustre/mdt/*/md_stats",
-			wanted_mds_fields)
-		if err != nil {
-			return err
-		}
-
 		// Metadata target job stats
-		err = l.GetLustreProcStats("/proc/fs/lustre/mdt/*/job_stats",
-			wanted_mdt_jobstats_fields)
-		if err != nil {
-			return err
-		}
+
+		mdt_files = append(mdt_files, "/proc/fs/lustre/mdt/*/md_stats")
+		mdt_files = append(mdt_files, "/proc/fs/lustre/mdt/*/job_stats")
+	} else {
+		mdt_files = l.Mds_procfiles;
 	}
 
-	for _, procfile := range l.Ost_procfiles {
+	for _, procfile := range ost_files {
 		ost_fields := wanted_ost_fields
 		if strings.HasSuffix(procfile, "job_stats") {
 			ost_fields = wanted_ost_jobstats_fields
@@ -499,7 +487,7 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 			return err
 		}
 	}
-	for _, procfile := range l.Mds_procfiles {
+	for _, procfile := range mdt_files {
 		mdt_fields := wanted_mds_fields
 		if strings.HasSuffix(procfile, "job_stats") {
 			mdt_fields = wanted_mdt_jobstats_fields
