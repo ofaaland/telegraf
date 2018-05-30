@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"log"
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/internal"
@@ -24,7 +25,8 @@ type Lustre2 struct {
 	Ost_procfiles []string
 	Mds_procfiles []string
 
-	// allFields maps and OST name to the metric fields associated with that OST
+	// allFields maps a Lustre target name to the metric fields associated with that target
+	// allFields[target-name][field-name] := field-value
 	allFields map[string]map[string]interface{}
 }
 
@@ -353,6 +355,37 @@ var wanted_mdt_jobstats_fields = []*mapping{
 	},
 }
 
+func ParseLine(line string, wanted_fields []*mapping) (map[string]string) {
+
+	var fields map[string]string
+	fields = map[string]string{}
+
+	parts := strings.Fields(line)
+	if strings.HasPrefix(line, "- job_id:") {
+		fields["jobid"] = parts[2]
+		return fields
+	}
+
+	for _, wanted := range wanted_fields {
+		var key string
+		if strings.TrimSuffix(parts[0], ":") == wanted.inProc {
+			wanted_field := wanted.field
+			// if not set, assume field[1]. Shouldn't be field[0], as
+			// that's a string
+			if wanted_field == 0 {
+				wanted_field = 1
+			}
+			key = wanted.inProc
+			if wanted.reportAs != "" {
+				key = wanted.reportAs
+			}
+			fields[key] = strings.TrimSuffix((parts[wanted_field]), ",")
+		}
+	}
+
+	return fields
+}
+
 func (l *Lustre2) GetLustreProcStats(fileglob string, wanted_fields []*mapping, acc telegraf.Accumulator) error {
 	files, err := filepath.Glob(fileglob)
 	if err != nil {
@@ -380,30 +413,24 @@ func (l *Lustre2) GetLustreProcStats(fileglob string, wanted_fields []*mapping, 
 		}
 
 		for _, line := range lines {
-			parts := strings.Fields(line)
-			if strings.HasPrefix(line, "- job_id:") {
-				// Set the job_id explicitly if present
-				fields["jobid"] = parts[2]
-			}
-
-			for _, wanted := range wanted_fields {
-				var data uint64
-				if strings.TrimSuffix(parts[0], ":") == wanted.inProc {
-					wanted_field := wanted.field
-					// if not set, assume field[1]. Shouldn't be field[0], as
-					// that's a string
-					if wanted_field == 0 {
-						wanted_field = 1
-					}
-					data, err = strconv.ParseUint(strings.TrimSuffix((parts[wanted_field]), ","), 10, 64)
+			var data uint64
+			var linefields map[string]string
+			linefields = ParseLine(line, wanted_fields)
+			if linefields["jobid"] != "" {
+				var oldjobid interface{}
+				oldjobid = fields["jobid"]
+				fields["jobid"] = linefields["jobid"]
+				if oldjobid != nil {
+					log.Printf("D! jobid changed from %s to %s\n",
+						oldjobid, fields["jobid"])
+				}
+			} else if len(linefields) != 0 {
+				for key, value := range linefields {
+					data, err = strconv.ParseUint(value, 10, 64)
 					if err != nil {
 						return err
-					}
-					report_name := wanted.inProc
-					if wanted.reportAs != "" {
-						report_name = wanted.reportAs
-					}
-					fields[report_name] = data
+						}
+					fields[key] = data
 				}
 			}
 		}
