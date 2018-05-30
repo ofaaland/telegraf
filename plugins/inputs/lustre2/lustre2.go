@@ -460,6 +460,9 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 	var ost_files []string
 	var mdt_files []string
 
+	ost_files = l.Ost_procfiles
+	mdt_files = l.Mds_procfiles
+
 	if len(l.Ost_procfiles) == 0 {
 		// read/write bytes are in obdfilter/<ost_name>/stats
 		// cache counters are in osd-ldiskfs/<ost_name>/stats
@@ -468,8 +471,6 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 		ost_files = append(ost_files, "/proc/fs/lustre/obdfilter/*/stats")
 		ost_files = append(ost_files, "/proc/fs/lustre/osd-ldiskfs/*/stats")
 		ost_files = append(ost_files, "/proc/fs/lustre/obdfilter/*/job_stats")
-	} else {
-		ost_files = l.Ost_procfiles;
 	}
 
 	if len(l.Mds_procfiles) == 0 {
@@ -478,8 +479,6 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 
 		mdt_files = append(mdt_files, "/proc/fs/lustre/mdt/*/md_stats")
 		mdt_files = append(mdt_files, "/proc/fs/lustre/mdt/*/job_stats")
-	} else {
-		mdt_files = l.Mds_procfiles;
 	}
 
 	for _, procfile := range ost_files {
