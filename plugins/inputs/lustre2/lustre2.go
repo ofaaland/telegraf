@@ -386,7 +386,7 @@ func ParseLine(line string, wanted_fields []*mapping) (map[string]string) {
 	return fields
 }
 
-func (l *Lustre2) GetLustreProcStats(fileglob string, wanted_fields []*mapping, acc telegraf.Accumulator) error {
+func (l *Lustre2) GetLustreProcStats(fileglob string, wanted_fields []*mapping) error {
 	files, err := filepath.Glob(fileglob)
 	if err != nil {
 		return err
@@ -455,19 +455,19 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 	if len(l.Ost_procfiles) == 0 {
 		// read/write bytes are in obdfilter/<ost_name>/stats
 		err := l.GetLustreProcStats("/proc/fs/lustre/obdfilter/*/stats",
-			wanted_ost_fields, acc)
+			wanted_ost_fields)
 		if err != nil {
 			return err
 		}
 		// cache counters are in osd-ldiskfs/<ost_name>/stats
 		err = l.GetLustreProcStats("/proc/fs/lustre/osd-ldiskfs/*/stats",
-			wanted_ost_fields, acc)
+			wanted_ost_fields)
 		if err != nil {
 			return err
 		}
 		// per job statistics are in obdfilter/<ost_name>/job_stats
 		err = l.GetLustreProcStats("/proc/fs/lustre/obdfilter/*/job_stats",
-			wanted_ost_jobstats_fields, acc)
+			wanted_ost_jobstats_fields)
 		if err != nil {
 			return err
 		}
@@ -476,14 +476,14 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 	if len(l.Mds_procfiles) == 0 {
 		// Metadata server stats
 		err := l.GetLustreProcStats("/proc/fs/lustre/mdt/*/md_stats",
-			wanted_mds_fields, acc)
+			wanted_mds_fields)
 		if err != nil {
 			return err
 		}
 
 		// Metadata target job stats
 		err = l.GetLustreProcStats("/proc/fs/lustre/mdt/*/job_stats",
-			wanted_mdt_jobstats_fields, acc)
+			wanted_mdt_jobstats_fields)
 		if err != nil {
 			return err
 		}
@@ -494,7 +494,7 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 		if strings.HasSuffix(procfile, "job_stats") {
 			ost_fields = wanted_ost_jobstats_fields
 		}
-		err := l.GetLustreProcStats(procfile, ost_fields, acc)
+		err := l.GetLustreProcStats(procfile, ost_fields)
 		if err != nil {
 			return err
 		}
@@ -504,7 +504,7 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 		if strings.HasSuffix(procfile, "job_stats") {
 			mdt_fields = wanted_mdt_jobstats_fields
 		}
-		err := l.GetLustreProcStats(procfile, mdt_fields, acc)
+		err := l.GetLustreProcStats(procfile, mdt_fields)
 		if err != nil {
 			return err
 		}
