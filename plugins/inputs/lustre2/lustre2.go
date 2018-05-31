@@ -20,8 +20,7 @@ import (
 
 type statSource struct {
 	target   string // Lustre target which reported the data (e.g. fsname-OST0003)
-	jobstats bool   // true means this data is associated with a jobid
-	jobid    string // valid if jobstats==true
+	jobid    string // valid if non-zero
 }
 
 // Lustre proc files can change between versions, so we want to future-proof
@@ -35,8 +34,8 @@ type Lustre2 struct {
 
 	// record metric fields and their origin
 	// allFields[statSource][field-name] := field-value
-	// allFields[target="lquake-OST0000",jobstats=false,jobid=""][field-name] := field-value
-	// allFields[target="lquake-OST0000",jobstats=true,jobid="opal-3334"][field-name] := field-value
+	// allFields[target="lquake-OST0000",jobid=""][field-name] := field-value
+	// allFields[target="lquake-OST0000",jobid="opal-3334"][field-name] := field-value
 	allFields map[statSource]map[string]interface{}
 }
 
@@ -404,6 +403,7 @@ func (l *Lustre2) GetLustreProcStats(fileglob string, target_type string) error 
 
 	for _, file := range files {
 		var origin statSource
+		var jobstats_file bool
 
 		/* Turn /proc/fs/lustre/obdfilter/<ost_name>/stats and similar
 		 * into just the object store target name
@@ -412,14 +412,14 @@ func (l *Lustre2) GetLustreProcStats(fileglob string, target_type string) error 
 		 */
 		path := strings.Split(file, "/")
 		origin.target = path[len(path)-2]
-		origin.jobstats = strings.HasSuffix(file, "job_stats")
+		jobstats_file = strings.HasSuffix(file, "job_stats")
 
 		var wanted_fields []*mapping
-		wanted_fields = l.wanted_maps[target_type][origin.jobstats]
+		wanted_fields = l.wanted_maps[target_type][jobstats_file]
 
 		var fields map[string]interface{}
 
-		if origin.jobstats == false {
+		if jobstats_file == false {
 			var ok bool
 			fields, ok = l.allFields[origin]
 			if !ok {
@@ -523,7 +523,7 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 		tags := map[string]string{
 			"name": origin.target,
 		}
-		if origin.jobstats == true {
+		if origin.jobid != "" {
 			tags["jobid"] = origin.jobid
 		}
 		acc.AddFields("lustre2", fields, tags)
