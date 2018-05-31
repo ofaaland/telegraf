@@ -19,6 +19,12 @@ import (
 	"github.com/influxdata/telegraf/plugins/inputs"
 )
 
+type statSource struct {
+	target   string // Lustre target which reported the data (e.g. fsname-OST0003)
+	jobstats bool   // true means this data is associated with a jobid
+	jobid    string // valid if jobstats==true
+}
+
 // Lustre proc files can change between versions, so we want to future-proof
 // by letting people choose what to look at.
 type Lustre2 struct {
@@ -28,9 +34,11 @@ type Lustre2 struct {
 	// Each mapping records a set of desired fields and how to find them
 	wanted_maps map[string]map[bool][]*mapping
 
-	// allFields maps a Lustre target name to the metric fields associated with that target
-	// allFields[target-name][field-name] := field-value
-	allFields map[string]map[string]interface{}
+	// record metric fields and their origin
+	// allFields[statSource][field-name] := field-value
+	// allFields[target="lquake-OST0000",jobstats=false,jobid=""][field-name] := field-value
+	// allFields[target="lquake-OST0000",jobstats=true,jobid="opal-3334"][field-name] := field-value
+	allFields map[statSource]map[string]interface{}
 }
 
 var sampleConfig = `
@@ -396,13 +404,7 @@ func (l *Lustre2) GetLustreProcStats(fileglob string, target_type string) error 
 	}
 
 	for _, file := range files {
-		var isJobStat bool
-		if strings.HasSuffix(file, "job_stats") {
-			isJobStat = true
-		}
-
-		var wanted_fields []*mapping
-		wanted_fields = l.wanted_maps[target_type][isJobStat]
+		var origin statSource
 
 		/* Turn /proc/fs/lustre/obdfilter/<ost_name>/stats and similar
 		 * into just the object store target name
@@ -410,13 +412,24 @@ func (l *Lustre2) GetLustreProcStats(fileglob string, target_type string) error 
 		 * which is true in Lustre 2.1->2.8
 		 */
 		path := strings.Split(file, "/")
-		name := path[len(path)-2]
+		origin.target = path[len(path)-2]
+		origin.jobstats = strings.HasSuffix(file, "job_stats")
+
+		var wanted_fields []*mapping
+		wanted_fields = l.wanted_maps[target_type][origin.jobstats]
+
 		var fields map[string]interface{}
-		fields, ok := l.allFields[name]
-		if !ok {
-			fields = make(map[string]interface{})
-			l.allFields[name] = fields
+
+		if origin.jobstats == false {
+			var ok bool
+			fields, ok = l.allFields[origin]
+			if !ok {
+				fields = make(map[string]interface{})
+				l.allFields[origin] = fields
+			}
 		}
+
+		log.Printf("D! origin %p jobstats %v fields %p file %s\n", origin, origin.jobstats, fields, file)
 
 		lines, err := internal.ReadLines(file)
 		if err != nil {
@@ -426,15 +439,14 @@ func (l *Lustre2) GetLustreProcStats(fileglob string, target_type string) error 
 		for _, line := range lines {
 			var data uint64
 			var linefields map[string]string
+
 			linefields = ParseLine(line, wanted_fields)
+
 			if linefields["jobid"] != "" {
-				var oldjobid interface{}
-				oldjobid = fields["jobid"]
-				fields["jobid"] = linefields["jobid"]
-				if oldjobid != nil {
-					log.Printf("D! jobid changed from %s to %s\n",
-						oldjobid, fields["jobid"])
-				}
+				origin.jobid = linefields["jobid"]
+				fields = make(map[string]interface{})
+				l.allFields[origin] = fields
+				log.Printf("D! created statSource jobid %s\n", origin.jobid)
 			} else if len(linefields) != 0 {
 				for key, value := range linefields {
 					data, err = strconv.ParseUint(value, 10, 64)
@@ -461,7 +473,7 @@ func (l *Lustre2) Description() string {
 
 // Gather reads stats from all lustre targets
 func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
-	l.allFields = make(map[string]map[string]interface{})
+	l.allFields = make(map[statSource]map[string]interface{})
 
 	l.wanted_maps = map[string]map[bool][]*mapping{
 		"OST": map[bool][]*mapping{
@@ -511,17 +523,15 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 		}
 	}
 
-	for name, fields := range l.allFields {
+	for origin, fields := range l.allFields {
 		tags := map[string]string{
-			"name": name,
+			"name": origin.target,
 		}
-		if _, ok := fields["jobid"]; ok {
-			if jobid, ok := fields["jobid"].(string); ok {
-				tags["jobid"] = jobid
-			}
-			delete(fields, "jobid")
+		if origin.jobstats == true {
+			tags["jobid"] = origin.jobid
 		}
 		acc.AddFields("lustre2", fields, tags)
+		log.Printf("D! Added fields target %s jobid %s point count %d\n", origin.target, origin.jobid, len(fields))
 	}
 
 	return nil

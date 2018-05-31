@@ -172,17 +172,18 @@ func TestLustre2GeneratesJobstatsMetrics(t *testing.T) {
 
 	tempdir := os.TempDir() + "/telegraf/proc/fs/lustre/"
 	ost_name := "OST0001"
+	mdt_name := "MDT0000"
 	job_name := "testjob1"
 
 	mdtdir := tempdir + "/mdt/"
-	err := os.MkdirAll(mdtdir+"/"+ost_name, 0755)
+	err := os.MkdirAll(mdtdir+"/"+mdt_name, 0755)
 	require.NoError(t, err)
 
 	obddir := tempdir + "/obdfilter/"
 	err = os.MkdirAll(obddir+"/"+ost_name, 0755)
 	require.NoError(t, err)
 
-	err = ioutil.WriteFile(mdtdir+"/"+ost_name+"/job_stats", []byte(mdtJobStatsContents), 0644)
+	err = ioutil.WriteFile(mdtdir+"/"+mdt_name+"/job_stats", []byte(mdtJobStatsContents), 0644)
 	require.NoError(t, err)
 
 	err = ioutil.WriteFile(obddir+"/"+ost_name+"/job_stats", []byte(obdfilterJobStatsContents), 0644)
@@ -199,12 +200,14 @@ func TestLustre2GeneratesJobstatsMetrics(t *testing.T) {
 	err = m.Gather(&acc)
 	require.NoError(t, err)
 
+	var fields map[string]interface{}
 	tags := map[string]string{
-		"name":  ost_name,
 		"jobid": job_name,
 	}
 
-	fields := map[string]interface{}{
+	// OST first
+	tags["name"] = ost_name
+	fields = map[string]interface{}{
 		"jobstats_read_calls":      uint64(1),
 		"jobstats_read_min_size":   uint64(4096),
 		"jobstats_read_max_size":   uint64(4096),
@@ -223,6 +226,12 @@ func TestLustre2GeneratesJobstatsMetrics(t *testing.T) {
 		"jobstats_get_info":        uint64(0),
 		"jobstats_set_info":        uint64(0),
 		"jobstats_quotactl":        uint64(0),
+	}
+	acc.AssertContainsTaggedFields(t, "lustre2", fields, tags)
+
+	// Then MDT
+	tags["name"] = mdt_name
+	fields = map[string]interface{}{
 		"jobstats_open":            uint64(5),
 		"jobstats_close":           uint64(4),
 		"jobstats_mknod":           uint64(6),
@@ -240,7 +249,6 @@ func TestLustre2GeneratesJobstatsMetrics(t *testing.T) {
 		"jobstats_samedir_rename":  uint64(705),
 		"jobstats_crossdir_rename": uint64(200),
 	}
-
 	acc.AssertContainsTaggedFields(t, "lustre2", fields, tags)
 
 	err = os.RemoveAll(os.TempDir() + "/telegraf")
