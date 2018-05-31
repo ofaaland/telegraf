@@ -25,6 +25,9 @@ type Lustre2 struct {
 	Ost_procfiles []string
 	Mds_procfiles []string
 
+	// Each mapping records a set of desired fields and how to find them
+	wanted_maps map[string]map[bool][]*mapping
+
 	// allFields maps a Lustre target name to the metric fields associated with that target
 	// allFields[target-name][field-name] := field-value
 	allFields map[string]map[string]interface{}
@@ -390,13 +393,21 @@ func ParseLine(line string, wanted_fields []*mapping) (map[string]string) {
 	return fields
 }
 
-func (l *Lustre2) GetLustreProcStats(fileglob string, wanted_fields []*mapping) error {
+func (l *Lustre2) GetLustreProcStats(fileglob string, target_type string) error {
 	files, err := filepath.Glob(fileglob)
 	if err != nil {
 		return err
 	}
 
 	for _, file := range files {
+		var isJobStat bool
+		if strings.HasSuffix(file, "job_stats") {
+			isJobStat = true
+		}
+
+		var wanted_fields []*mapping
+		wanted_fields = l.wanted_maps[target_type][isJobStat]
+
 		/* Turn /proc/fs/lustre/obdfilter/<ost_name>/stats and similar
 		 * into just the object store target name
 		 * Assumpion: the target name is always second to last,
@@ -421,6 +432,7 @@ func (l *Lustre2) GetLustreProcStats(fileglob string, wanted_fields []*mapping) 
 			var linefields map[string]string
 			linefields = ParseLine(line, wanted_fields)
 			if linefields["jobid"] != "" {
+				// allJobstatsFields[target-name][jobid][field-name] := field-value
 				var oldjobid interface{}
 				oldjobid = fields["jobid"]
 				fields["jobid"] = linefields["jobid"]
@@ -457,6 +469,17 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 	l.allFields = make(map[string]map[string]interface{})
 	l.allJobstatsFields = make(map[string]map[string]map[string]interface{})
 
+	l.wanted_maps = map[string]map[bool][]*mapping{
+		"OST": map[bool][]*mapping{
+			true:wanted_ost_jobstats_fields,
+			false:wanted_ost_fields,
+		},
+		"MDT": map[bool][]*mapping{
+			true:wanted_mdt_jobstats_fields,
+			false:wanted_mds_fields,
+		},
+	}
+
 	var ost_files []string
 	var mdt_files []string
 
@@ -482,21 +505,13 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 	}
 
 	for _, procfile := range ost_files {
-		ost_fields := wanted_ost_fields
-		if strings.HasSuffix(procfile, "job_stats") {
-			ost_fields = wanted_ost_jobstats_fields
-		}
-		err := l.GetLustreProcStats(procfile, ost_fields)
+		err := l.GetLustreProcStats(procfile, "OST")
 		if err != nil {
 			return err
 		}
 	}
 	for _, procfile := range mdt_files {
-		mdt_fields := wanted_mds_fields
-		if strings.HasSuffix(procfile, "job_stats") {
-			mdt_fields = wanted_mdt_jobstats_fields
-		}
-		err := l.GetLustreProcStats(procfile, mdt_fields)
+		err := l.GetLustreProcStats(procfile, "MDT")
 		if err != nil {
 			return err
 		}
