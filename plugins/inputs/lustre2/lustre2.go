@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"log"
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/internal"
@@ -429,8 +428,6 @@ func (l *Lustre2) GetLustreProcStats(fileglob string, target_type string) error 
 			}
 		}
 
-		log.Printf("D! origin %p jobstats %v fields %p file %s\n", origin, origin.jobstats, fields, file)
-
 		lines, err := internal.ReadLines(file)
 		if err != nil {
 			return err
@@ -446,7 +443,6 @@ func (l *Lustre2) GetLustreProcStats(fileglob string, target_type string) error 
 				origin.jobid = linefields["jobid"]
 				fields = make(map[string]interface{})
 				l.allFields[origin] = fields
-				log.Printf("D! created statSource jobid %s\n", origin.jobid)
 			} else if len(linefields) != 0 {
 				for key, value := range linefields {
 					data, err = strconv.ParseUint(value, 10, 64)
@@ -531,7 +527,6 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 			tags["jobid"] = origin.jobid
 		}
 		acc.AddFields("lustre2", fields, tags)
-		log.Printf("D! Added fields target %s jobid %s point count %d\n", origin.target, origin.jobid, len(fields))
 	}
 
 	return nil
