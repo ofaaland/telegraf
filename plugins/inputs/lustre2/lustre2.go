@@ -364,11 +364,10 @@ var wanted_mdt_jobstats_fields = []*mapping{
 	},
 }
 
+// Parse a single line and create a field_name => field_value_string mapping
 func ParseLine(line string, wanted_fields []*mapping) (map[string]string) {
 
-	var fields map[string]string
-	fields = map[string]string{}
-
+	fields := map[string]string{}
 	parts := strings.Fields(line)
 	if strings.HasPrefix(line, "- job_id:") {
 		fields["jobid"] = parts[2]
