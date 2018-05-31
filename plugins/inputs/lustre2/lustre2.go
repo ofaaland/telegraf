@@ -33,7 +33,6 @@ type Lustre2 struct {
 	wanted_maps map[string]map[bool][]*mapping
 
 	// record metric fields and their origin
-	// allFields[statSource][field-name] := field-value
 	// allFields[target="lquake-OST0000",jobid=""][field-name] := field-value
 	// allFields[target="lquake-OST0000",jobid="opal-3334"][field-name] := field-value
 	allFields map[statSource]map[string]interface{}
@@ -394,6 +393,9 @@ func ParseLine(line string, wanted_fields []*mapping) (map[string]string) {
 	return fields
 }
 
+// Parse each input line in each file, and build up a map with fields
+// found and their values, contained by a map with Lustre target and
+// JobId (if applicable) indicating the values to use for tagging
 func (l *Lustre2) GetLustreProcStats(fileglob string, target_type string) error {
 	files, err := filepath.Glob(fileglob)
 	if err != nil {
@@ -484,23 +486,24 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 	var ost_files []string
 	var mdt_files []string
 
+	/*
+	 * This should probably either ONLY use the user-supplied files, if
+	 * they specified any at all; or ONLY use the defaults, if none were
+	 * supplied.  However, since that's an interface change, need to check
+	 * what the telegraf policy is.
+	 *
+	 * Code below behaves like the plugin has in the past.
+	 */
 	ost_files = l.Ost_procfiles
 	mdt_files = l.Mds_procfiles
 
 	if len(l.Ost_procfiles) == 0 {
-		// read/write bytes are in obdfilter/<ost_name>/stats
-		// cache counters are in osd-ldiskfs/<ost_name>/stats
-		// per job statistics are in obdfilter/<ost_name>/job_stats
-
 		ost_files = append(ost_files, "/proc/fs/lustre/obdfilter/*/stats")
 		ost_files = append(ost_files, "/proc/fs/lustre/osd-ldiskfs/*/stats")
 		ost_files = append(ost_files, "/proc/fs/lustre/obdfilter/*/job_stats")
 	}
 
 	if len(l.Mds_procfiles) == 0 {
-		// Metadata server stats
-		// Metadata target job stats
-
 		mdt_files = append(mdt_files, "/proc/fs/lustre/mdt/*/md_stats")
 		mdt_files = append(mdt_files, "/proc/fs/lustre/mdt/*/job_stats")
 	}
