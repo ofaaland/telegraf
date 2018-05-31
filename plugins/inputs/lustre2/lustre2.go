@@ -500,6 +500,7 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 	if len(l.Ost_procfiles) == 0 {
 		ost_files = append(ost_files, "/proc/fs/lustre/obdfilter/*/stats")
 		ost_files = append(ost_files, "/proc/fs/lustre/osd-ldiskfs/*/stats")
+		ost_files = append(ost_files, "/proc/fs/lustre/osd-zfs/*/stats")
 		ost_files = append(ost_files, "/proc/fs/lustre/obdfilter/*/job_stats")
 	}
 
