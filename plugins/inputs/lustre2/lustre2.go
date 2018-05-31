@@ -31,10 +31,6 @@ type Lustre2 struct {
 	// allFields maps a Lustre target name to the metric fields associated with that target
 	// allFields[target-name][field-name] := field-value
 	allFields map[string]map[string]interface{}
-
-	// allJobstatsFields maps a Lustre target/jobid to the associated metric fields
-	// allJobstatsFields[target-name][jobid][field-name] := field-value
-	allJobstatsFields map[string]map[string]map[string]interface{}
 }
 
 var sampleConfig = `
@@ -432,7 +428,6 @@ func (l *Lustre2) GetLustreProcStats(fileglob string, target_type string) error 
 			var linefields map[string]string
 			linefields = ParseLine(line, wanted_fields)
 			if linefields["jobid"] != "" {
-				// allJobstatsFields[target-name][jobid][field-name] := field-value
 				var oldjobid interface{}
 				oldjobid = fields["jobid"]
 				fields["jobid"] = linefields["jobid"]
@@ -467,7 +462,6 @@ func (l *Lustre2) Description() string {
 // Gather reads stats from all lustre targets
 func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 	l.allFields = make(map[string]map[string]interface{})
-	l.allJobstatsFields = make(map[string]map[string]map[string]interface{})
 
 	l.wanted_maps = map[string]map[bool][]*mapping{
 		"OST": map[bool][]*mapping{
