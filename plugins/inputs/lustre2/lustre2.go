@@ -26,6 +26,7 @@ type Lustre2 struct {
 
 	// allFields maps and OST name to the metric fields associated with that OST
 	allFields map[string]map[string]interface{}
+	jobFields map[string]map[string]map[string]interface{}
 }
 
 var sampleConfig = `
@@ -374,16 +375,34 @@ func (l *Lustre2) GetLustreProcStats(fileglob string, wanted_fields []*mapping, 
 			l.allFields[name] = fields
 		}
 
+		jobsumfields, ok := l.jobFields[name]
+		if !ok {
+			jobsumfields = make(map[string]map[string]interface{})
+			l.jobFields[name] = jobsumfields
+		}
+
 		lines, err := internal.ReadLines(file)
 		if err != nil {
 			return err
 		}
+		var jobfields map[string]interface{}
+
+		var jobstats bool
+		jobstats = false
 
 		for _, line := range lines {
 			parts := strings.Fields(line)
 			if strings.HasPrefix(line, "- job_id:") {
+				jobstats = true
+				jobfields, ok = l.jobFields[name][parts[2]]
+				if !ok {
+					jobfields = make(map[string]interface{})
+					l.jobFields[name][parts[2]] = jobfields
+				}
+
 				// Set the job_id explicitly if present
-				fields["jobid"] = parts[2]
+				//jobfields = l.allFields[name][parts[2]]
+				//jobfields["jobid"] = parts[2]
 			}
 
 			for _, wanted := range wanted_fields {
@@ -403,7 +422,11 @@ func (l *Lustre2) GetLustreProcStats(fileglob string, wanted_fields []*mapping, 
 					if wanted.reportAs != "" {
 						report_name = wanted.reportAs
 					}
-					fields[report_name] = data
+					if !jobstats {
+						fields[report_name] = data
+					} else {
+						jobfields[report_name] = data
+					}
 				}
 			}
 		}
@@ -424,6 +447,7 @@ func (l *Lustre2) Description() string {
 // Gather reads stats from all lustre targets
 func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 	l.allFields = make(map[string]map[string]interface{})
+	l.jobFields = make(map[string]map[string]map[string]interface{})
 
 	if len(l.Ost_procfiles) == 0 {
 		// read/write bytes are in obdfilter/<ost_name>/stats
@@ -494,6 +518,15 @@ func (l *Lustre2) Gather(acc telegraf.Accumulator) error {
 			delete(fields, "jobid")
 		}
 		acc.AddFields("lustre2", fields, tags)
+	}
+	for name, _ := range l.jobFields {
+		for jobid, fields := range l.jobFields[name] {
+			tags := map[string]string{
+				"name":  name,
+				"jobid": jobid,
+			}
+			acc.AddFields("lustre2", fields, tags)
+		}
 	}
 
 	return nil
